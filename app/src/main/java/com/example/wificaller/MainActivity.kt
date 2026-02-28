@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private val TAG = "NSD_TEST"
 
     private var isDiscovering = false
+    private lateinit var nsdHelper: NsdHelper
 
 
     private val discoveredDevices = mutableStateListOf<WifiDevice>()
@@ -42,39 +43,50 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
+//        nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
 
-        initializeServerSocket()
+        nsdHelper = NsdHelper(this) { device ->
 
+            runOnUiThread {
+                if (discoveredDevices.none { it.host == device.host }) {
+                    discoveredDevices.add(device)
+                }
+            }
+        }
+//        initializeServerSocket()
+
+        nsdHelper.startDiscovery()
         startServer()
-        discoverServices()
 
         setContent {
             WifiUI(
                 devices = discoveredDevices,
-                onCallClick = { startServer() },
-                onConnectClick = { discoverServices() },
-                connectToDevice = { host, port -> connectToServer(host, port) }
+                onCallClick = { },
+                onConnectClick = { },
+                connectToDevice = { host, port -> connectToServer(host, port)}
             )
         }
     }
 
     // ✅ Create server socket
-    private fun initializeServerSocket() {
-            try {
-                serverSocket = ServerSocket(0).also { socket ->
-                    localPort = socket.localPort
-                    Log.d(TAG, "Server started on port: $localPort")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Server socket error: ${e.message}")
-            }
-    }
 
+//    private fun initializeServerSocket() {
+//        try {
+//            serverSocket = ServerSocket(0).also { socket ->
+//                localPort = socket.localPort
+//                Log.d(TAG, "Server started on port: $localPort")
+//            }
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Server socket error: ${e.message}")
+//        }
+//    }
+
+    //
     private var serverThread: Thread? = null
 
+    //
     private fun startServer() {
-        if(serverThread?.isAlive == true) return  // Already running
+        if (serverThread?.isAlive == true) return  // Already running
 
         serverThread = Thread {
             try {
@@ -83,8 +95,8 @@ class MainActivity : ComponentActivity() {
                     localPort = serverSocket!!.localPort
                 }
 
-                registerService(localPort)
-
+//                registerService(localPort)
+                nsdHelper.registerService(localPort)
                 while (true) {
                     val client = serverSocket!!.accept()
                     val writer = client.getOutputStream().bufferedWriter()
@@ -99,6 +111,7 @@ class MainActivity : ComponentActivity() {
         }.apply { start() }
     }
 
+    //
     private fun connectToServer(host: String, port: Int) {
         Thread {
             try {
@@ -112,148 +125,151 @@ class MainActivity : ComponentActivity() {
             }
         }.start()
     }
+//
+//    private fun discoverServices() {
+//        if (isDiscovering) {
+//            nsdManager.stopServiceDiscovery(discoveryListener)
+//            isDiscovering = false
+//        }
+//
+//        nsdManager.discoverServices(
+//            SERVICE_TYPE,
+//            NsdManager.PROTOCOL_DNS_SD,
+//            discoveryListener
+//        )
+//        isDiscovering = true
+//    }
+//
+//    private fun resolveService(service: NsdServiceInfo) {
+//        val listener = object : NsdManager.ResolveListener {
+//            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+//                Log.e(TAG, "Resolve failed: $errorCode for ${serviceInfo.serviceName}")
+//            }
+//
+//            override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+//                val host = serviceInfo.host?.hostAddress ?: return
+//                val port = serviceInfo.port
+//                val name = serviceInfo.serviceName
+//
+//                Log.d(TAG, "Resolved server: $name at $host:$port")
+//
+//                runOnUiThread {
+//                    if (discoveredDevices.none { it.host == host }) {
+//                        discoveredDevices.add(WifiDevice(name, host, port))
+//                    }
+//                }
+//            }
+//        }
+//        nsdManager.resolveService(service, listener)
+//    }
+//
+//    private val discoveryListener = object : NsdManager.DiscoveryListener {
+//
+//        override fun onDiscoveryStarted(regType: String) {
+//            Log.d(TAG, "Discovery started")
+//        }
+//
+//        override fun onServiceFound(service: NsdServiceInfo) {
+//            if (service.serviceType.contains(SERVICE_TYPE) && service.serviceName != serviceName) {
+//                resolveService(service) // creates a new listener for each resolve
+//            }
+//        }
+//
+//        override fun onServiceLost(service: NsdServiceInfo) {
+//            Log.e(TAG, "Service lost: $service")
+//        }
+//
+//        override fun onDiscoveryStopped(serviceType: String) {
+//            Log.d(TAG, "Discovery stopped")
+//        }
+//
+//        override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+//            Log.e(TAG, "Discovery failed: $errorCode")
+//            nsdManager.stopServiceDiscovery(this)
+//        }
+//
+//        override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
+//            Log.e(TAG, "Stop discovery failed: $errorCode")
+//            nsdManager.stopServiceDiscovery(this)
+//        }
+//    }
+//
+//    // ✅ Registration Listener
+//    private val registrationListener = object : NsdManager.RegistrationListener {
+//
+//        override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
+//            serviceName = serviceInfo.serviceName
+//            Log.d("NSD_TEST", "Service registered as: $serviceName")
+//
+//        }
+//
+//        override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+//            Log.e("NSD_TEST", "Registration failed: $errorCode")
+//
+//        }
+//
+//        override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {}
+//
+//        override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+//    }
+//
+//    // ✅ Register service
+//    private fun registerService(port: Int) {
+//        val deviceName = android.os.Build.MODEL
+//        val uniqueServiceName = "WifiCaller_$deviceName"
+//
+//        val serviceInfo = NsdServiceInfo().apply {
+//            serviceName = uniqueServiceName
+//            serviceType = "_wificaller._tcp"
+//            setPort(port)
+//        }
+//
+////        nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
+//        nsdManager.registerService(
+//            serviceInfo,
+//            NsdManager.PROTOCOL_DNS_SD,
+//            registrationListener
+//        )
+//    }
+//}
 
-    private fun discoverServices() {
-        if (isDiscovering) {
-            nsdManager.stopServiceDiscovery(discoveryListener)
-            isDiscovering = false
-        }
-
-        nsdManager.discoverServices(
-            SERVICE_TYPE,
-            NsdManager.PROTOCOL_DNS_SD,
-            discoveryListener
-        )
-        isDiscovering = true
-    }
-
-    private fun resolveService(service: NsdServiceInfo) {
-        val listener = object : NsdManager.ResolveListener {
-            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                Log.e(TAG, "Resolve failed: $errorCode for ${serviceInfo.serviceName}")
-            }
-
-            override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                val host = serviceInfo.host?.hostAddress ?: return
-                val port = serviceInfo.port
-                val name = serviceInfo.serviceName
-
-                Log.d(TAG, "Resolved server: $name at $host:$port")
-
-                runOnUiThread {
-                    if (discoveredDevices.none { it.host == host }) {
-                        discoveredDevices.add(WifiDevice(name, host, port))
-                    }
-                }
-            }
-        }
-        nsdManager.resolveService(service, listener)
-    }
-
-    private val discoveryListener = object : NsdManager.DiscoveryListener {
-
-        override fun onDiscoveryStarted(regType: String) {
-            Log.d(TAG, "Discovery started")
-        }
-
-        override fun onServiceFound(service: NsdServiceInfo) {
-            if (service.serviceType.contains(SERVICE_TYPE) && service.serviceName != serviceName) {
-                resolveService(service) // creates a new listener for each resolve
-            }
-        }
-
-        override fun onServiceLost(service: NsdServiceInfo) {
-            Log.e(TAG, "Service lost: $service")
-        }
-
-        override fun onDiscoveryStopped(serviceType: String) {
-            Log.d(TAG, "Discovery stopped")
-        }
-
-        override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-            Log.e(TAG, "Discovery failed: $errorCode")
-            nsdManager.stopServiceDiscovery(this)
-        }
-
-        override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-            Log.e(TAG, "Stop discovery failed: $errorCode")
-            nsdManager.stopServiceDiscovery(this)
-        }
-    }
-
-    // ✅ Registration Listener
-    private val registrationListener = object : NsdManager.RegistrationListener {
-
-        override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
-            serviceName = serviceInfo.serviceName
-            Log.d("NSD_TEST", "Service registered as: $serviceName")
-
-        }
-
-        override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            Log.e("NSD_TEST", "Registration failed: $errorCode")
-
-        }
-
-        override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {}
-
-        override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
-    }
-
-    // ✅ Register service
-    private fun registerService(port: Int) {
-        val deviceName = android.os.Build.MODEL
-        val uniqueServiceName = "WifiCaller_$deviceName"
-
-        val serviceInfo = NsdServiceInfo().apply {
-            serviceName = uniqueServiceName
-            serviceType = "_wificaller._tcp"
-            setPort(port)
-        }
-
-//        nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
-        nsdManager.registerService(
-            serviceInfo,
-            NsdManager.PROTOCOL_DNS_SD,
-            registrationListener
-        )
-    }
-}
-
-@Composable
-fun WifiUI(devices: List<WifiDevice>,
-           connectToDevice: (String, Int) -> Unit,
-            onConnectClick: () -> Unit,
-           onCallClick: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+    @Composable
+    fun WifiUI(
+        devices: List<WifiDevice>,
+        connectToDevice: (String, Int) -> Unit,
+        onConnectClick: () -> Unit,
+        onCallClick: () -> Unit
     ) {
-        if (devices.isEmpty()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (devices.isEmpty()) {
 
-            Text(
-                text = "No devices found",
-                style = MaterialTheme.typography.bodyLarge
-            )
+                Text(
+                    text = "No devices found",
+                    style = MaterialTheme.typography.bodyLarge
+                )
 
-        }
-        LazyColumn(
-            modifier = Modifier.fillMaxSize()
-        ){
-            items(devices) { device ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(device.name)
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(devices) { device ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(device.name)
 
-                    Button(onClick = { connectToDevice(device.host, device.port) } ) {
-                        Text( "Connect")
+                        Button(onClick = { connectToDevice(device.host, device.port) }) {
+                            Text("Connect")
+                        }
                     }
                 }
             }
         }
-    }
 
+    }
 }
