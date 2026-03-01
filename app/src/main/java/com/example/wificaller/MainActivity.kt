@@ -20,12 +20,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.example.wificaller.CallViewModel
+import androidx.compose.runtime.collectAsState
+import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.LaunchedEffect
+import android.content.Intent
+
 data class WifiDevice(
     val name: String,
     val host: String,
     val port: Int
 )
+
 class MainActivity : ComponentActivity() {
+
+    private val callViewModel: CallViewModel by viewModels<CallViewModel>()
+
 
     private lateinit var nsdManager: NsdManager
     private var serverSocket: ServerSocket? = null
@@ -36,6 +49,15 @@ class MainActivity : ComponentActivity() {
 
     private var isDiscovering = false
     private lateinit var nsdHelper: NsdHelper
+
+    object constants {
+        const val CALL_REQUEST = "CALL_REQUEST"
+        const val CALL_ACCEPT = "CALL_ACCEPT"
+        const val CALL_DROP = "CALL_DROP"
+
+
+    }
+
 
 
     private val discoveredDevices = mutableStateListOf<WifiDevice>()
@@ -58,15 +80,51 @@ class MainActivity : ComponentActivity() {
         nsdHelper.startDiscovery()
         startServer()
 
+
+
         setContent {
+
+
+            val callRequest by
+            callViewModel.callRequest.collectAsState()
+
             WifiUI(
                 devices = discoveredDevices,
                 onCallClick = { },
                 onConnectClick = { },
-                connectToDevice = { host, port -> connectToServer(host, port)}
+                connectToDevice = { host, port ->
+                    callViewModel.sendCallRequest(host, port, constants.CALL_REQUEST)
+
+                    callViewModel.requestCall(host, port)
+
+                }
             )
+
+            callRequest?.let { request ->
+
+                LaunchedEffect(request) {
+
+                    val intent = Intent(
+                        this@MainActivity,
+                        IncomingCallActivity::class.java
+                    )
+
+                    intent.putExtra("HOST", request.host)
+                    intent.putExtra("PORT", request.port)
+
+
+                    startActivity(intent)
+
+
+
+//
+                    callViewModel.clearCallRequest()
+                    
+                }
+            }
         }
     }
+
 
     // ✅ Create server socket
 
@@ -98,11 +156,36 @@ class MainActivity : ComponentActivity() {
 //                registerService(localPort)
                 nsdHelper.registerService(localPort)
                 while (true) {
+
                     val client = serverSocket!!.accept()
-                    val writer = client.getOutputStream().bufferedWriter()
-                    var message = android.os.Build.MODEL
-                    writer.write("$message\n")
-                    writer.flush()
+
+                    val reader = client.getInputStream().bufferedReader()
+                    val message = reader.readLine()
+
+                    Log.d(TAG, client.inetAddress.hostAddress ?: "")
+                    Log.d(TAG, "$client.port")
+
+                    if (message == "CALL_REQUEST") {
+
+                        runOnUiThread {
+                            callViewModel.requestCall(
+                                client.inetAddress.hostAddress ?: "",
+                                client.port
+                            )
+                        }
+                    }
+
+
+                    if (message == "CALL_DROP") {
+                        runOnUiThread {
+                            // Close IncomingCallActivity if open
+                            IncomingCallActivity.dropCall?.invoke()
+                            callViewModel.clearCallRequest()
+                        }
+
+                    }
+
+
                     client.close()
                 }
             } catch (e: Exception) {
@@ -240,6 +323,7 @@ class MainActivity : ComponentActivity() {
         onConnectClick: () -> Unit,
         onCallClick: () -> Unit
     ) {
+
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
