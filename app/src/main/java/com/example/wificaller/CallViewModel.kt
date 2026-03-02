@@ -8,7 +8,9 @@ data class CallRequest(
     val port: Int
 )
 
-class CallViewModel : ViewModel() {
+object CallRepository {
+
+    var myListeningPort: Int = 0
 
     private val _callRequest =
         MutableStateFlow<CallRequest?>(null)
@@ -23,14 +25,27 @@ class CallViewModel : ViewModel() {
     fun clearCallRequest() {
         _callRequest.value = null
     }
+}
 
-    fun sendCallRequest(host: String, port: Int, command: String) {
+class CallViewModel : ViewModel() {
+
+    val callRequest = CallRepository.callRequest
+
+    fun requestCall(host: String, port: Int) {
+        CallRepository.requestCall(host, port)
+    }
+
+    fun clearCallRequest() {
+        CallRepository.clearCallRequest()
+    }
+
+    fun sendCallRequest(host: String, port: Int, command: String, myPort:Int) {
         Thread {
             try {
                 val socket = java.net.Socket(host, port)
                 val writer = socket.getOutputStream().bufferedWriter()
 
-                writer.write("$command\n")
+                writer.write("$command|$myPort\n")
                 writer.flush()
 
                 socket.close()

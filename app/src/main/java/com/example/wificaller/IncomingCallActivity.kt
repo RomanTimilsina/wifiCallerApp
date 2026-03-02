@@ -14,9 +14,14 @@ import kotlin.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.ViewModelProvider
 
 class IncomingCallActivity : ComponentActivity() {
-    private val callViewModel: CallViewModel by viewModels<CallViewModel>()
+//    private val callViewModel: CallViewModel by viewModels {
+//        ViewModelProvider.AndroidViewModelFactory.getInstance(application)
+//    }
+
+    private val callViewModel: CallViewModel by viewModels()
     companion object {
         var dropCall: (() -> Unit)? = null
 
@@ -33,7 +38,7 @@ class IncomingCallActivity : ComponentActivity() {
         }
 
         setContent {
-//            val callRequest by callViewModel.callRequest.collectAsState()
+            val callRequest by callViewModel.callRequest.collectAsState()
 
             IncomingCallScreen(
                 host = host,
@@ -42,10 +47,10 @@ class IncomingCallActivity : ComponentActivity() {
                 onDropCall = {
                     finish()
                     // Send CALL_DROP to the other device
-                    callViewModel.sendCallRequest(host, port, MainActivity.constants.CALL_DROP)
+                    callViewModel.sendCallRequest(host, port, MainActivity.constants.CALL_DROP, CallRepository.myListeningPort)
 
                     // Clear local call state
-//                    callViewModel.clearCallRequest()
+                    callViewModel.clearCallRequest()
 
                     // Close this activity only
 
@@ -53,7 +58,11 @@ class IncomingCallActivity : ComponentActivity() {
             )
 
             // Auto-close if the call is dropped remotely
-
+            LaunchedEffect(callRequest) {
+                if (callRequest == null) {
+                    finish()
+                }
+            }
 
         }
     }

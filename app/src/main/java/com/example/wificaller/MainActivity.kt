@@ -28,6 +28,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.LaunchedEffect
 import android.content.Intent
+import androidx.lifecycle.ViewModelProvider
 
 data class WifiDevice(
     val name: String,
@@ -37,7 +38,10 @@ data class WifiDevice(
 
 class MainActivity : ComponentActivity() {
 
-    private val callViewModel: CallViewModel by viewModels<CallViewModel>()
+//    private val callViewModel: CallViewModel by viewModels {
+//        ViewModelProvider.AndroidViewModelFactory.getInstance(application)
+//    }
+private val callViewModel: CallViewModel by viewModels()
 
 
     private lateinit var nsdManager: NsdManager
@@ -93,7 +97,7 @@ class MainActivity : ComponentActivity() {
                 onCallClick = { },
                 onConnectClick = { },
                 connectToDevice = { host, port ->
-                    callViewModel.sendCallRequest(host, port, constants.CALL_REQUEST)
+                    callViewModel.sendCallRequest(host, port, constants.CALL_REQUEST, CallRepository.myListeningPort)
 
                     callViewModel.requestCall(host, port)
 
@@ -118,8 +122,8 @@ class MainActivity : ComponentActivity() {
 
 
 //
-                    callViewModel.clearCallRequest()
-                    
+//                    callViewModel.clearCallRequest()
+
                 }
             }
         }
@@ -151,6 +155,7 @@ class MainActivity : ComponentActivity() {
                 if (serverSocket == null) {
                     serverSocket = ServerSocket(0)
                     localPort = serverSocket!!.localPort
+                    CallRepository.myListeningPort = localPort
                 }
 
 //                registerService(localPort)
@@ -161,25 +166,29 @@ class MainActivity : ComponentActivity() {
 
                     val reader = client.getInputStream().bufferedReader()
                     val message = reader.readLine()
+                    val parts = message.split("|")
+
+                    val command = parts[0]
+                    val senderPort = parts[1].toInt()
 
                     Log.d(TAG, client.inetAddress.hostAddress ?: "")
                     Log.d(TAG, "$client.port")
 
-                    if (message == "CALL_REQUEST") {
+                    if (command == "CALL_REQUEST") {
 
                         runOnUiThread {
                             callViewModel.requestCall(
                                 client.inetAddress.hostAddress ?: "",
-                                client.port
+                                senderPort
                             )
                         }
                     }
 
 
-                    if (message == "CALL_DROP") {
+                    if (command == "CALL_DROP") {
                         runOnUiThread {
                             // Close IncomingCallActivity if open
-                            IncomingCallActivity.dropCall?.invoke()
+//                            IncomingCallActivity.dropCall?.invoke()
                             callViewModel.clearCallRequest()
                         }
 
