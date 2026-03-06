@@ -1,5 +1,6 @@
 package com.example.wificaller
 
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +17,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.ViewModelProvider
 
+import android.media.AudioRecord
+import android.media.AudioTrack
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.MediaRecorder
+import java.net.Socket
 class IncomingCallActivity : ComponentActivity() {
 //    private val callViewModel: CallViewModel by viewModels {
 //        ViewModelProvider.AndroidViewModelFactory.getInstance(application)
@@ -37,13 +44,90 @@ class IncomingCallActivity : ComponentActivity() {
             finish()
         }
 
+        fun startSendingAudio(host: String, port: Int) {
+
+            Thread {
+
+                val socket = java.net.Socket(host, port)
+
+                val audioRecord = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    8000,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    1024
+                )
+
+                val buffer = ByteArray(1024)
+
+                val output = socket.getOutputStream()
+
+                audioRecord.startRecording()
+
+                while (true) {
+                    val read = audioRecord.read(buffer, 0, buffer.size)
+                    if (read > 0) {
+                        output.write(buffer, 0, read)
+                    }
+                }
+
+            }.start()
+        }
+
+        fun startReceivingAudio(socket: Socket) {
+
+            Thread {
+
+                val input = socket.getInputStream()
+
+                val audioTrack = AudioTrack(
+                    android.media.AudioManager.STREAM_VOICE_CALL,
+                    8000,
+                    android.media.AudioFormat.CHANNEL_OUT_MONO,
+                    android.media.AudioFormat.ENCODING_PCM_16BIT,
+                    1024,
+                    android.media.AudioTrack.MODE_STREAM
+                )
+
+                val buffer = ByteArray(1024)
+
+                audioTrack.play()
+
+                while (true) {
+
+                    val read = input.read(buffer)
+
+                    if (read > 0) {
+                        audioTrack.write(buffer, 0, read)
+                    }
+
+                }
+
+            }.start()
+        }
+
+
+
         setContent {
             val callRequest by callViewModel.callRequest.collectAsState()
 
             IncomingCallScreen(
                 host = host,
                 port = port,
-                onPickCall = { connectCall(host, port) },
+                onPickCall = {
+
+                    Thread {
+                        val socket = Socket(host, 8000)
+
+                        startReceivingAudio(socket)
+
+                    }.start()
+
+                    startSendingAudio(host, 8000)
+                    callViewModel.sendCallRequest(host, port, MainActivity.constants.CALL_ACCEPT, CallRepository.myListeningPort)
+
+                    connectCall(host, port)
+                             },
                 onDropCall = {
                     finish()
                     // Send CALL_DROP to the other device
@@ -70,6 +154,7 @@ class IncomingCallActivity : ComponentActivity() {
     private fun connectCall(host: String, port: Int) {
         // TODO: start socket connection here
         println("Connecting to $host:$port")
+
     }
 }
 

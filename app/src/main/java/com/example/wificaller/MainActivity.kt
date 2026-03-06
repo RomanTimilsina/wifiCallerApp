@@ -30,6 +30,19 @@ import androidx.compose.runtime.LaunchedEffect
 import android.content.Intent
 import androidx.lifecycle.ViewModelProvider
 
+import android.media.AudioRecord
+import android.media.AudioTrack
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.MediaRecorder
+import java.net.Socket
+
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+
 data class WifiDevice(
     val name: String,
     val host: String,
@@ -71,6 +84,19 @@ private val callViewModel: CallViewModel by viewModels()
 
 //        nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
 
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                1
+            )
+        }
+
         nsdHelper = NsdHelper(this) { device ->
 
             runOnUiThread {
@@ -84,6 +110,7 @@ private val callViewModel: CallViewModel by viewModels()
         nsdHelper.startDiscovery()
         startServer()
 
+        startAudioServer()
 
 
         setContent {
@@ -144,6 +171,85 @@ private val callViewModel: CallViewModel by viewModels()
 //    }
 
     //
+    fun startSendingAudio(host: String, port: Int) {
+
+        Thread {
+
+            val socket = java.net.Socket(host, port)
+
+            val audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                8000,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                1024
+            )
+
+            val buffer = ByteArray(1024)
+
+            val output = socket.getOutputStream()
+
+            audioRecord.startRecording()
+
+            while (true) {
+                val read = audioRecord.read(buffer, 0, buffer.size)
+                if (read > 0) {
+                    output.write(buffer, 0, read)
+                }
+            }
+
+        }.start()
+    }
+
+    fun startReceivingAudio(socket: Socket) {
+
+        Thread {
+
+            val input = socket.getInputStream()
+
+            val audioTrack = AudioTrack(
+                android.media.AudioManager.STREAM_VOICE_CALL,
+                8000,
+                android.media.AudioFormat.CHANNEL_OUT_MONO,
+                android.media.AudioFormat.ENCODING_PCM_16BIT,
+                1024,
+                android.media.AudioTrack.MODE_STREAM
+            )
+
+            val buffer = ByteArray(8000)
+
+            audioTrack.play()
+
+            while (true) {
+
+                val read = input.read(buffer)
+
+                if (read > 0) {
+                    audioTrack.write(buffer, 0, read)
+                }
+
+            }
+
+        }.start()
+    }
+
+    fun startAudioServer() {
+
+        Thread {
+
+            val audioServer = ServerSocket(8000)
+
+            while (true) {
+
+                val socket = audioServer.accept()
+
+                startReceivingAudio(socket)
+
+            }
+
+        }.start()
+
+    }
     private var serverThread: Thread? = null
 
     //
@@ -160,6 +266,8 @@ private val callViewModel: CallViewModel by viewModels()
 
 //                registerService(localPort)
                 nsdHelper.registerService(localPort)
+
+
                 while (true) {
 
                     val client = serverSocket!!.accept()
@@ -174,7 +282,7 @@ private val callViewModel: CallViewModel by viewModels()
                     Log.d(TAG, client.inetAddress.hostAddress ?: "")
                     Log.d(TAG, "$client.port")
 
-                    if (command == "CALL_REQUEST") {
+                    if (command == MainActivity.constants.CALL_REQUEST) {
 
                         runOnUiThread {
                             callViewModel.requestCall(
@@ -185,7 +293,7 @@ private val callViewModel: CallViewModel by viewModels()
                     }
 
 
-                    if (command == "CALL_DROP") {
+                    if (command == MainActivity.constants.CALL_DROP) {
                         runOnUiThread {
                             // Close IncomingCallActivity if open
 //                            IncomingCallActivity.dropCall?.invoke()
@@ -194,6 +302,17 @@ private val callViewModel: CallViewModel by viewModels()
 
                     }
 
+                    if (command == MainActivity.constants.CALL_ACCEPT) {
+                        Thread {
+                            val socket = Socket(client.inetAddress.hostAddress ?: "", 8000)
+
+                            startReceivingAudio(socket)
+
+                        }.start()
+
+                        startSendingAudio(client.inetAddress.hostAddress ?: "", 8000)
+
+                    }
 
                     client.close()
                 }
@@ -363,6 +482,5 @@ private val callViewModel: CallViewModel by viewModels()
                 }
             }
         }
-
     }
 }
