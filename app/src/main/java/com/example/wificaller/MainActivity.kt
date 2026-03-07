@@ -56,7 +56,7 @@ class MainActivity : ComponentActivity() {
 //    }
 private val callViewModel: CallViewModel by viewModels()
 
-
+    private var isCalling = false
     private lateinit var nsdManager: NsdManager
     private var serverSocket: ServerSocket? = null
     private var localPort: Int = 0
@@ -71,6 +71,8 @@ private val callViewModel: CallViewModel by viewModels()
         const val CALL_REQUEST = "CALL_REQUEST"
         const val CALL_ACCEPT = "CALL_ACCEPT"
         const val CALL_DROP = "CALL_DROP"
+
+        var PICKED = false
 
 
     }
@@ -191,7 +193,7 @@ private val callViewModel: CallViewModel by viewModels()
 
             audioRecord.startRecording()
 
-            while (true) {
+            while (CallRepository.callPicked.value) {
                 val read = audioRecord.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     output.write(buffer, 0, read)
@@ -220,7 +222,7 @@ private val callViewModel: CallViewModel by viewModels()
 
             audioTrack.play()
 
-            while (true) {
+            while (CallRepository.callPicked.value) {
 
                 val read = input.read(buffer)
 
@@ -231,6 +233,11 @@ private val callViewModel: CallViewModel by viewModels()
             }
 
         }.start()
+    }
+
+    fun stopAudioCall() {
+
+        isCalling = false
     }
 
     fun startAudioServer() {
@@ -294,15 +301,17 @@ private val callViewModel: CallViewModel by viewModels()
 
 
                     if (command == MainActivity.constants.CALL_DROP) {
+                        CallRepository.setCallPicked(false)
                         runOnUiThread {
                             // Close IncomingCallActivity if open
 //                            IncomingCallActivity.dropCall?.invoke()
                             callViewModel.clearCallRequest()
                         }
-
+                        stopAudioCall()
                     }
 
                     if (command == MainActivity.constants.CALL_ACCEPT) {
+                        CallRepository.setCallPicked(true)
                         Thread {
                             val socket = Socket(client.inetAddress.hostAddress ?: "", 8000)
 
@@ -323,19 +332,7 @@ private val callViewModel: CallViewModel by viewModels()
     }
 
     //
-    private fun connectToServer(host: String, port: Int) {
-        Thread {
-            try {
-                val socket = java.net.Socket(host, port)
-                val reader = socket.getInputStream().bufferedReader()
-                val message = reader.readLine()
-                Log.d(TAG, "Received from server: $message")
-                socket.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Client error: ${e.message}")
-            }
-        }.start()
-    }
+
 //
 //    private fun discoverServices() {
 //        if (isDiscovering) {

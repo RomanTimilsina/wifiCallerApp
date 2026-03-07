@@ -12,6 +12,13 @@ object CallRepository {
 
     var myListeningPort: Int = 0
 
+    private val _callPicked = MutableStateFlow(false)
+    val callPicked: StateFlow<Boolean> = _callPicked
+
+    fun setCallPicked(value: Boolean) {
+        _callPicked.value = value
+    }
+
     private val _callRequest =
         MutableStateFlow<CallRequest?>(null)
 

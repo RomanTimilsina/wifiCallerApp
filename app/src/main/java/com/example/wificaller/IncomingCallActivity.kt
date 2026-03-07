@@ -23,6 +23,14 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.MediaRecorder
 import java.net.Socket
+
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+
+import kotlinx.coroutines.delay
+
 class IncomingCallActivity : ComponentActivity() {
 //    private val callViewModel: CallViewModel by viewModels {
 //        ViewModelProvider.AndroidViewModelFactory.getInstance(application)
@@ -33,6 +41,8 @@ class IncomingCallActivity : ComponentActivity() {
         var dropCall: (() -> Unit)? = null
 
     }
+
+    var isCalling = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -64,7 +74,7 @@ class IncomingCallActivity : ComponentActivity() {
 
                 audioRecord.startRecording()
 
-                while (true) {
+                while (CallRepository.callPicked.value) {
                     val read = audioRecord.read(buffer, 0, buffer.size)
                     if (read > 0) {
                         output.write(buffer, 0, read)
@@ -93,7 +103,7 @@ class IncomingCallActivity : ComponentActivity() {
 
                 audioTrack.play()
 
-                while (true) {
+                while (CallRepository.callPicked.value) {
 
                     val read = input.read(buffer)
 
@@ -110,11 +120,13 @@ class IncomingCallActivity : ComponentActivity() {
 
         setContent {
             val callRequest by callViewModel.callRequest.collectAsState()
-
+            val callPicked by CallRepository.callPicked.collectAsState()
             IncomingCallScreen(
+                callPicked = callPicked,
                 host = host,
                 port = port,
                 onPickCall = {
+                    CallRepository.setCallPicked(true)
 
                     Thread {
                         val socket = Socket(host, 8000)
@@ -129,6 +141,7 @@ class IncomingCallActivity : ComponentActivity() {
                     connectCall(host, port)
                              },
                 onDropCall = {
+                    CallRepository.setCallPicked(false)
                     finish()
                     // Send CALL_DROP to the other device
                     callViewModel.sendCallRequest(host, port, MainActivity.constants.CALL_DROP, CallRepository.myListeningPort)
@@ -160,6 +173,7 @@ class IncomingCallActivity : ComponentActivity() {
 
 @Composable
 fun IncomingCallScreen(
+    callPicked:Boolean,
     host: String,
     port: Int,
     onPickCall: () -> Unit,
@@ -186,6 +200,28 @@ fun IncomingCallScreen(
 
         Spacer(modifier = Modifier.height(40.dp))
 
+        if (callPicked) {
+
+            var seconds by remember { mutableStateOf(0) }
+
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(1000)
+                    seconds++
+                }
+            }
+
+            val minutes = seconds / 60
+            val remainingSeconds = seconds % 60
+            val timeText = String.format("%02d:%02d", minutes, remainingSeconds)
+
+            Text(
+                text = timeText,
+                style = MaterialTheme.typography.headlineMedium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(40.dp))
         Row(
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
